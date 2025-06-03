@@ -1,17 +1,50 @@
-This tools is a PowerShell based tool that was designed to report on the following: 
+# 📊 PowerShell Office 365 Reporting Tool
 
-- User Mailboxes (with full delegation details) 
-- Shared Mailboxes (with delegation and permissions)
-- Distribution Lists (with complete membership)
-- Security Groups (with descriptions and members)
-- Office 365 and Teams Groups (with detailed membership) 
-- Exchange Permissions and delegation mapping 
+This PowerShell 7-based script gathers and exports detailed reporting on the following Microsoft 365 resources:
 
-You must use PowerShell 7 in order to run this script. you can find the download here: 
-https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.5 
+## 🔍 What It Reports
 
-This script uses the Microsoft Graph API and Exchange Online PowerShell to gather this information and export it to an excel spreadsheet (saved to the location of your choosing). The script will check that you have the required modules in order to run and will attempt to install them for you. Defender can sometimes block PowerShell 7 from accessing controlled folders while installing the required modules so keep your eye on the toast notifications in the bottom right hand corner of your screen and allow "pwsh.exe" to access your documents folder. You do not need to run this script as an administrator. 
+- **User Mailboxes** – Includes full delegation details  
+- **Shared Mailboxes** – Includes delegation and permission information  
+- **Distribution Lists** – Complete membership breakdown  
+- **Security Groups** – Member list and group description  
+- **Office 365 & Teams Groups** – Detailed membership  
+- **Exchange Permissions** – Delegation mapping across mailboxes  
 
-Before running this script you are advised to login on a separate profile to the tenant you want to query, making sure you have signed in and making sure that it's the last browser window you clicked as the script will automatically open the prompt to authenticate with that tenant. When asked, you want to check the box to consent on behalf of the organisation otherwise you will run into permission issues and the script will fail to run as intended. 
+## ⚙️ Prerequisites
 
-You will additionally be prompted to connect to Exchange Online so have the credentials to hand. During the course of the script running you may see red text telling you the operation could not be performed because object "mailbox name" could not be found. This is normal. 
+- **PowerShell 7 is required**  
+  👉 [Download PowerShell 7.5 here](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.5)
+
+- **Microsoft Graph API & Exchange Online PowerShell modules**  
+  The script checks for required modules and will attempt to install any that are missing.
+
+> ⚠️ **Windows Defender Note**  
+During module installation, Defender may block `pwsh.exe` from accessing controlled folders. Watch for toast notifications (bottom-right of your screen) and **allow access to your Documents folder** if prompted.
+
+## 📁 Output
+
+- All data is exported to an **Excel spreadsheet**  
+- You’ll choose the save location during execution
+
+## 🔐 Authentication Steps
+
+Before running the script:
+
+1. **Login to the target tenant** using a separate browser profile  
+2. Make sure it’s the **last active browser window** before running the script  
+3. When prompted:
+   - Check **“Consent on behalf of the organization”**  
+   - This is required to avoid permission-related failures
+
+You will also be prompted to **connect to Exchange Online**, so have your credentials ready.
+
+> 🔴 **Note:** During execution, you may see red text like:
+>  
+> `"The operation could not be performed because object 'mailbox name' could not be found."`  
+>  
+> This is **normal behavior** and can be safely ignored.
+
+## ✅ Admin Rights
+
+You **do not need to run** this script as an administrator.
