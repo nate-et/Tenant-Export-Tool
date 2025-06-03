@@ -64,7 +64,7 @@ function Install-RequiredModules {
     Write-Host ""
 }
 
-# Function to connect to Microsoft Graph
+# Function to connect to Microsoft Graph with enhanced permissions
 function Connect-ToGraph {
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Yellow
     Write-Host "A browser window will open for authentication." -ForegroundColor Cyan
@@ -72,27 +72,56 @@ function Connect-ToGraph {
     
     try {
         # Define required scopes for the operations we need to perform
+        # Enhanced with additional permissions for Groups and Teams
         $scopes = @(
             'User.Read.All',
             'Group.Read.All',
             'GroupMember.Read.All',
             'Directory.Read.All',
             'Team.ReadBasic.All',
-            'MailboxSettings.Read'
+            'MailboxSettings.Read',
+            'Organization.Read.All',
+            'RoleManagement.Read.Directory',
+            'TeamMember.Read.All',           # Added for Teams member access
+            'Channel.ReadBasic.All',         # Added for Teams channel access
+            'Application.Read.All',          # Added for service principal access
+            'Group.ReadWrite.All'            # Enhanced group permissions (if your admin allows)
         )
+        
+        Write-Host "Requesting the following permissions:" -ForegroundColor Cyan
+        foreach ($scope in $scopes) {
+            Write-Host "  - $scope" -ForegroundColor Gray
+        }
+        Write-Host ""
         
         Connect-MgGraph -Scopes $scopes -NoWelcome
         Write-Host "Successfully connected to Microsoft Graph!" -ForegroundColor Green
         
-        # Get tenant information
+        # Get tenant information and verify permissions
         $context = Get-MgContext
         Write-Host "Connected to tenant: $($context.TenantId)" -ForegroundColor Cyan
+        Write-Host "Granted scopes: $($context.Scopes -join ', ')" -ForegroundColor Gray
         Write-Host ""
+        
+        # Test a simple Graph call to verify connectivity
+        try {
+            $testUser = Get-MgUser -Top 1 -Property "DisplayName" -ErrorAction SilentlyContinue
+            Write-Host "Graph API connectivity verified!" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "Warning: Graph API test failed - $($_.Exception.Message)" -ForegroundColor Yellow
+        }
         
         return $true
     }
     catch {
         Write-Host "Failed to connect to Microsoft Graph. Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Common solutions:" -ForegroundColor Yellow
+        Write-Host "1. Ensure you're using a Global Administrator account" -ForegroundColor White
+        Write-Host "2. Check if your organization allows the requested permissions" -ForegroundColor White
+        Write-Host "3. Try running PowerShell as Administrator" -ForegroundColor White
+        Write-Host "4. Verify your account has appropriate licenses" -ForegroundColor White
         return $false
     }
 }
@@ -491,8 +520,12 @@ function Get-NormalAndTeamsGroups {
     Write-Host "Retrieving Office 365 and Teams groups with detailed membership..." -ForegroundColor Yellow
     
     try {
-        $groups = Get-MgGroup -All -Property "DisplayName,Mail,Description,CreatedDateTime,GroupTypes,Visibility" | 
+        # Get all Unified groups (Office 365 Groups)
+        Write-Host "Fetching Office 365/Teams groups..." -ForegroundColor Gray
+        $groups = Get-MgGroup -All -Property "DisplayName,Mail,Description,CreatedDateTime,GroupTypes,Visibility,Id" | 
                  Where-Object { $_.GroupTypes -contains "Unified" }
+        
+        Write-Host "Found $($groups.Count) Office 365/Teams groups to process" -ForegroundColor Green
         
         $groupData = @()
         $counter = 0
@@ -501,11 +534,13 @@ function Get-NormalAndTeamsGroups {
             $counter++
             Write-Progress -Activity "Processing Office 365/Teams Groups" -Status "Processing $($group.DisplayName) ($counter of $($groups.Count))" -PercentComplete (($counter / $groups.Count) * 100)
             
-            # Determine if it's a Teams group
+            # Determine if it's a Teams group with better error handling
             $isTeamsGroup = $false
-            $teamsInfo = ""
+            $teamsInfo = "Checking..."
+            
             try {
-                $team = Get-MgTeam -TeamId $group.Id -ErrorAction SilentlyContinue
+                # Try to get Teams information with timeout
+                $team = Get-MgTeam -TeamId $group.Id -ErrorAction Stop
                 if ($team) {
                     $isTeamsGroup = $true
                     $teamsInfo = "Teams-enabled"
@@ -514,43 +549,104 @@ function Get-NormalAndTeamsGroups {
             catch {
                 $isTeamsGroup = $false
                 $teamsInfo = "Office 365 Group only"
+                Write-Verbose "Group $($group.DisplayName) is not Teams-enabled: $($_.Exception.Message)"
             }
             
-            # Get members with detailed information
+            # Initialize member arrays
             $members = @()
             $memberDetails = @()
             $owners = @()
             $memberTypes = @()
+            $memberRetrievalStatus = "Success"
             
+            # Get members with enhanced error handling and multiple fallback methods
             try {
-                # Get regular members
-                $groupMembers = Get-MgGroupMember -GroupId $group.Id -All
-                foreach ($member in $groupMembers) {
+                Write-Verbose "Attempting to get members for group: $($group.DisplayName)"
+                
+                # Method 1: Try standard Graph API call
+                $groupMembers = @()
+                try {
+                    $groupMembers = Get-MgGroupMember -GroupId $group.Id -All -Property "Id" -ErrorAction Stop
+                    Write-Verbose "Successfully retrieved $($groupMembers.Count) members using standard method"
+                }
+                catch {
+                    Write-Verbose "Standard member retrieval failed: $($_.Exception.Message)"
+                    
+                    # Method 2: Try with different parameters
                     try {
-                        $userInfo = Get-MgUser -UserId $member.Id -Property "DisplayName,UserPrincipalName,Mail,UserType" -ErrorAction SilentlyContinue
-                        if ($userInfo) {
-                            $members += $userInfo.DisplayName
-                            $memberTypes += $userInfo.UserType
-                            $memberDetails += "$($userInfo.DisplayName) ($($userInfo.UserPrincipalName)) [$($userInfo.UserType)]"
-                        }
-                        else {
-                            $members += "Unknown Member"
-                            $memberTypes += "Unknown"
-                            $memberDetails += "Unknown Member ($($member.Id))"
-                        }
+                        $groupMembers = Get-MgGroupMember -GroupId $group.Id -ErrorAction Stop
+                        Write-Verbose "Successfully retrieved members using fallback method"
                     }
                     catch {
-                        $members += "Unable to retrieve member info"
-                        $memberTypes += "Unknown"
-                        $memberDetails += "Unable to retrieve member info ($($member.Id))"
+                        Write-Verbose "Fallback member retrieval also failed: $($_.Exception.Message)"
+                        $memberRetrievalStatus = "Failed - Insufficient permissions"
+                        throw $_.Exception
                     }
                 }
                 
-                # Get owners
-                $groupOwners = Get-MgGroupOwner -GroupId $group.Id -All
+                # Process each member with detailed error handling
+                foreach ($member in $groupMembers) {
+                    try {
+                        # Try to get user information first
+                        $userInfo = $null
+                        try {
+                            $userInfo = Get-MgUser -UserId $member.Id -Property "DisplayName,UserPrincipalName,Mail,UserType" -ErrorAction Stop
+                            if ($userInfo) {
+                                $members += $userInfo.DisplayName
+                                $memberTypes += if ($userInfo.UserType) { $userInfo.UserType } else { "Member" }
+                                $memberDetails += "$($userInfo.DisplayName) ($($userInfo.UserPrincipalName)) [$($userInfo.UserType)]"
+                                continue
+                            }
+                        }
+                        catch {
+                            Write-Verbose "Failed to get user info for member $($member.Id): $($_.Exception.Message)"
+                        }
+                        
+                        # If not a user, try to get group information
+                        try {
+                            $groupInfo = Get-MgGroup -GroupId $member.Id -Property "DisplayName,Mail" -ErrorAction Stop
+                            if ($groupInfo) {
+                                $members += $groupInfo.DisplayName
+                                $memberTypes += "Group"
+                                $memberDetails += "$($groupInfo.DisplayName) [Group]"
+                                continue
+                            }
+                        }
+                        catch {
+                            Write-Verbose "Failed to get group info for member $($member.Id): $($_.Exception.Message)"
+                        }
+                        
+                        # If both fail, add as unknown
+                        $members += "Unknown Member"
+                        $memberTypes += "Unknown"
+                        $memberDetails += "Unknown Member ($($member.Id))"
+                        
+                    }
+                    catch {
+                        Write-Verbose "Error processing member $($member.Id): $($_.Exception.Message)"
+                        $members += "Error retrieving member"
+                        $memberTypes += "Error"
+                        $memberDetails += "Error retrieving member ($($member.Id))"
+                    }
+                }
+                
+            }
+            catch {
+                Write-Warning "Unable to retrieve members for group '$($group.DisplayName)': $($_.Exception.Message)"
+                $members = @("Unable to retrieve members")
+                $memberDetails = @("Unable to retrieve members - $($_.Exception.Message)")
+                $memberTypes = @("Unknown")
+                $memberRetrievalStatus = "Failed - $($_.Exception.Message)"
+            }
+            
+            # Get owners with enhanced error handling
+            try {
+                Write-Verbose "Attempting to get owners for group: $($group.DisplayName)"
+                $groupOwners = Get-MgGroupOwner -GroupId $group.Id -All -ErrorAction Stop
+                
                 foreach ($owner in $groupOwners) {
                     try {
-                        $ownerInfo = Get-MgUser -UserId $owner.Id -Property "DisplayName,UserPrincipalName" -ErrorAction SilentlyContinue
+                        $ownerInfo = Get-MgUser -UserId $owner.Id -Property "DisplayName,UserPrincipalName" -ErrorAction Stop
                         if ($ownerInfo) {
                             $owners += "$($ownerInfo.DisplayName) ($($ownerInfo.UserPrincipalName))"
                         }
@@ -559,17 +655,17 @@ function Get-NormalAndTeamsGroups {
                         }
                     }
                     catch {
+                        Write-Verbose "Error getting owner info for $($owner.Id): $($_.Exception.Message)"
                         $owners += "Unable to retrieve owner info ($($owner.Id))"
                     }
                 }
             }
             catch {
-                $members = @("Unable to retrieve members")
-                $memberDetails = @("Unable to retrieve members - insufficient permissions")
-                $owners = @("Unable to retrieve owners")
-                $memberTypes = @("Unknown")
+                Write-Warning "Unable to retrieve owners for group '$($group.DisplayName)': $($_.Exception.Message)"
+                $owners = @("Unable to retrieve owners - insufficient permissions")
             }
             
+            # Build the group data object
             $groupData += [PSCustomObject]@{
                 'Display Name' = $group.DisplayName
                 'Email Address' = $group.Mail
@@ -578,21 +674,32 @@ function Get-NormalAndTeamsGroups {
                 'Visibility' = $group.Visibility
                 'Teams Status' = $teamsInfo
                 'Created Date' = $group.CreatedDateTime
+                'Group ID' = $group.Id
                 'Member Count' = $members.Count
                 'Owner Count' = $owners.Count
                 'Members' = ($members -join "; ")
                 'Member Details' = ($memberDetails -join "; ")
                 'Member Types' = ($memberTypes -join "; ")
                 'Owners' = ($owners -join "; ")
+                'Member Retrieval Status' = $memberRetrievalStatus
             }
         }
         
         Write-Progress -Activity "Processing Office 365/Teams Groups" -Completed
         Write-Host "Retrieved $($groupData.Count) Office 365/Teams groups" -ForegroundColor Green
+        
+        # Summary of retrieval issues
+        $failedGroups = $groupData | Where-Object { $_.'Member Retrieval Status' -ne "Success" }
+        if ($failedGroups.Count -gt 0) {
+            Write-Host "Warning: $($failedGroups.Count) groups had member retrieval issues" -ForegroundColor Yellow
+            Write-Host "This is usually due to insufficient permissions or group privacy settings" -ForegroundColor Yellow
+        }
+        
         return $groupData
     }
     catch {
         Write-Host "Error retrieving Office 365/Teams groups: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "This might be due to insufficient permissions or connectivity issues" -ForegroundColor Yellow
         return @()
     }
 }
