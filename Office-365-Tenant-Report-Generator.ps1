@@ -85,7 +85,11 @@ function Connect-ToGraph {
             'TeamMember.Read.All',           # Added for Teams member access
             'Channel.ReadBasic.All',         # Added for Teams channel access
             'Application.Read.All',          # Added for service principal access
-            'Group.ReadWrite.All'            # Enhanced group permissions (if your admin allows)
+            'Group.ReadWrite.All',           # Enhanced group permissions (if your admin allows)
+            'Directory.ReadWrite.All',       # Enhanced directory permissions for security groups
+            'GroupMember.ReadWrite.All',     # Enhanced member permissions
+            'PrivilegedAccess.Read.AzureAD', # For reading privileged access
+            'RoleManagement.Read.All'        # Enhanced role management permissions
         )
         
         Write-Host "Requesting the following permissions:" -ForegroundColor Cyan
@@ -315,6 +319,7 @@ function Get-SharedMailboxes {
 }
 
 # Function to get distribution lists with enhanced member details
+# Function to get distribution lists with enhanced member details and fixed description handling
 function Get-DistributionLists {
     Write-Host "Retrieving distribution lists with detailed membership..." -ForegroundColor Yellow
     
@@ -340,6 +345,28 @@ function Get-DistributionLists {
             $counter++
             $displayName = if ($dl.DisplayName) { $dl.DisplayName } else { $dl.Name }
             Write-Progress -Activity "Processing Distribution Lists" -Status "Processing $displayName ($counter of $($distributionLists.Count))" -PercentComplete (($counter / $distributionLists.Count) * 100)
+            
+            # Fix description handling - convert ArrayList or array to string
+            $description = ""
+            if ($dl.Description) {
+                if ($dl.Description -is [System.Collections.ArrayList] -or $dl.Description -is [Array]) {
+                    # If it's an ArrayList or Array, join the elements
+                    $description = ($dl.Description | Where-Object { $_ -ne $null -and $_ -ne "" }) -join "; "
+                }
+                elseif ($dl.Description -is [String]) {
+                    # If it's already a string, use it directly
+                    $description = $dl.Description
+                }
+                else {
+                    # For any other type, convert to string
+                    $description = $dl.Description.ToString()
+                }
+            }
+            
+            # Clean up the description - remove empty entries and trim
+            if ([string]::IsNullOrWhiteSpace($description) -or $description -eq "System.Collections.ArrayList") {
+                $description = ""
+            }
             
             # Get members with detailed information
             $members = @()
@@ -390,16 +417,28 @@ function Get-DistributionLists {
                 $memberTypes = @("Unknown")
             }
             
+            # Additional properties handling with proper type conversion
+            $requiresSenderAuth = ""
+            if ($useExchangeData) {
+                $requiresSenderAuth = if ($dl.RequireSenderAuthenticationEnabled -ne $null) { 
+                    $dl.RequireSenderAuthenticationEnabled.ToString() 
+                } else { 
+                    "Unknown" 
+                }
+            } else {
+                $requiresSenderAuth = "Unknown"
+            }
+            
             $distributionListData += [PSCustomObject]@{
                 'Display Name' = $displayName
                 'Email Address' = if ($dl.Mail) { $dl.Mail } else { $dl.PrimarySmtpAddress }
-                'Description' = $dl.Description
+                'Description' = $description  # Now properly handled
                 'Created Date' = if ($dl.CreatedDateTime) { $dl.CreatedDateTime } else { $dl.WhenCreated }
                 'Member Count' = $members.Count
                 'Members' = ($members -join "; ")
                 'Member Details' = ($memberDetails -join "; ")
                 'Member Types' = ($memberTypes -join "; ")
-                'Requires Sender Authentication' = if ($useExchangeData) { $dl.RequireSenderAuthenticationEnabled } else { "Unknown" }
+                'Requires Sender Authentication' = $requiresSenderAuth
             }
         }
         
