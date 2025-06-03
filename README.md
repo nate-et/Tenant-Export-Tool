@@ -8,9 +8,9 @@ This tools is a PowerShell based tool that was designed to report on the followi
 - Exchange Permissions and delegation mapping 
 
 You must use PowerShell 7 in order to run this script. you can find the download here: 
-https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.5
+https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.5 
 
-This script uses the Microsoft Graph API and Exchange Online PowerShell to gather this information and export it to an excel spreadsheet (saved to the location of your choosing). The script will check that you have the required modules in order to run and will attempt to install them for you. You do not need to run this script as an administrator. 
+This script uses the Microsoft Graph API and Exchange Online PowerShell to gather this information and export it to an excel spreadsheet (saved to the location of your choosing). The script will check that you have the required modules in order to run and will attempt to install them for you. Defender can sometimes block PowerShell 7 from accessing controlled folders while installing the required modules so keep your eye on the toast notifications in the bottom right hand corner of your screen and allow "pwsh.exe" to access your documents folder. You do not need to run this script as an administrator. 
 
 Before running this script you are advised to login on a separate profile to the tenant you want to query, making sure you have signed in and making sure that it's the last browser window you clicked as the script will automatically open the prompt to authenticate with that tenant. When asked, you want to check the box to consent on behalf of the organisation otherwise you will run into permission issues and the script will fail to run as intended. 
 
