@@ -46,15 +46,30 @@ function Install-RequiredModules {
         
         if (!(Get-Module -ListAvailable -Name $module)) {
             Write-Host "Module $module not found. Installing..." -ForegroundColor Yellow
-            try {
-                Install-Module -Name $module -Force -AllowClobber -Scope CurrentUser
-                Write-Host "Successfully installed $module" -ForegroundColor Green
-            }
-            catch {
-                Write-Host "Failed to install $module. Error: $($_.Exception.Message)" -ForegroundColor Red
-                Write-Host "Please run PowerShell as Administrator and try again." -ForegroundColor Red
-                exit 1
-            }
+            
+try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    $saveDialog = New-Object System.Windows.Forms.SaveFileDialog
+    $saveDialog.Filter = "Excel files (*.xlsx)|*.xlsx"
+    $saveDialog.Title = "Save Enhanced Tenant Report"
+    $saveDialog.FileName = $defaultFileName
+    $saveDialog.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+
+    $result = $saveDialog.ShowDialog()
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        $exportPath = $saveDialog.FileName
+        Write-Host "File will be saved to: $exportPath"
+    } else {
+        Write-Host "Save cancelled by user."
+        exit
+    }
+}
+catch {
+    # Fallback if GUI is not available
+    Write-Host "GUI not available. Please enter full export path (including filename):"
+    $exportPath = Read-Host "Export Path"
+}
+
         }
         else {
             Write-Host "Module $module is already installed" -ForegroundColor Green
@@ -825,6 +840,16 @@ try {
         $saveDialog.Title = "Save Enhanced Tenant Report"
         $saveDialog.FileName = $defaultFileName
         $saveDialog.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+
+# Open the dialog and capture user choice
+$result = $saveDialog.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    $exportPath = $saveDialog.FileName
+    Write-Host "File will be saved to: $exportPath"
+} else {
+    Write-Host "Save cancelled by user."
+    exit
+}
         
         Write-Host "Opening file save dialog..." -ForegroundColor Gray
         $result = $saveDialog.ShowDialog()
