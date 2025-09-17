@@ -90,6 +90,7 @@ function Connect-ToGraph {
             'GroupMember.ReadWrite.All',     # Enhanced member permissions
             'PrivilegedAccess.Read.AzureAD', # For reading privileged access
             'RoleManagement.Read.All'        # Enhanced role management permissions
+			'GroupSettings.Read.All'		 # Security Groups 
         )
         
         Write-Host "Requesting the following permissions:" -ForegroundColor Cyan
